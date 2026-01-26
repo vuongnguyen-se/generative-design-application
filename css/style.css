@@ -1,0 +1,144 @@
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.app {
+  display: flex;
+  width: 100vw;
+  height: 100vh;
+}
+
+.panel {
+  width: 25%;
+  min-width: 280px;
+  max-width: 360px;
+  height: 100%;
+  padding: 16px;
+  box-sizing: border-box;
+  overflow-y: auto;
+
+  background: #fff;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
+}
+
+.stage {
+  flex: 1;
+  height: 100%;
+  overflow: hidden;
+}
+
+#canvas-holder{
+  width: 100%;
+  height: 100%;
+}
+
+canvas {
+  display: block;
+}
+
+/* ===== Compact UI like sample ===== */
+
+/* p5 panel root */
+#ui > div {
+  padding: 10px !important;
+  border-radius: 8px !important;
+  background: transparent !important;
+  color: #111 !important;
+  box-shadow: none !important;
+}
+
+/* label */
+#ui > div > div {
+  margin: 6px 0 2px !important;
+  font-size: 11px !important;
+  color: #1a67c7 !important;
+  letter-spacing: 0.2px;
+  line-height: 1.1;
+}
+
+/* controls */
+#ui select,
+#ui input,
+#ui button {
+  display: block;
+  font-size: 12px;
+}
+
+/* slider */
+#ui input[type="range"]{
+  width: 160px !important;
+  max-width: 100%;
+  height: 14px;
+  margin: 0 0 6px 0;
+  padding: 0;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+}
+
+/* track */
+#ui input[type="range"]::-webkit-slider-runnable-track{
+  height: 6px;
+  border-radius: 999px;
+  background: #dbe8ff;
+}
+#ui input[type="range"]::-moz-range-track{
+  height: 6px;
+  border-radius: 999px;
+  background: #dbe8ff;
+}
+
+/* thumb */
+#ui input[type="range"]::-webkit-slider-thumb{
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #1a67c7;
+  border: 2px solid #fff;
+  margin-top: -3px;
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.12);
+}
+#ui input[type="range"]::-moz-range-thumb{
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #1a67c7;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.12);
+}
+
+/* number input (Seed) */
+#ui input[type="number"]{
+  width: 60px;
+  padding: 4px 6px;
+  border: 1px solid #cfd8e3;
+  border-radius: 6px;
+}
+
+/* color picker */
+#ui input[type="color"]{
+  width: 28px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid #cfd8e3;
+  border-radius: 4px;
+  background: #fff;
+}
+
+/* buttons */
+#ui button{
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid #cfd8e3;
+  background: #fff;
+  cursor: pointer;
+  margin-top: 8px;
+}
+#ui button:hover{
+  background: #f5f8ff;
+}
