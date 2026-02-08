@@ -142,3 +142,12 @@ canvas {
 #ui button:hover{
   background: #f5f8ff;
 }
+
+ /* additional css for Fleur's feedbacks */
+#canvas-holder canvas{
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+
