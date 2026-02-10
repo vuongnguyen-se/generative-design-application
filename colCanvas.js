@@ -9,11 +9,11 @@ const params = {
   seamAlpha: 0.10,      // 0..1 subtle vertical seams
 
   // Colors (top -> bottom)
-  color1: '#0B4BFF',
-  color2: '#0A00A8',
-  color3: '#FF31D6',
-  color4: '#FFD400',
-  color5: '#F8FFFF',
+  color1: '#552080',
+  color2: '#006DD5',
+  color3: '#FF1F2D',
+  color4: '#FF3300',
+  color5: '#FFFFFF',
 
   // Motion
   amplitude: 55,        // px up/down
@@ -24,6 +24,18 @@ const params = {
 
 let canvasHolder = null;
 let outW = 720, outH = 720;
+
+let recorder = null;
+let recordedChunks = [];
+let recordTimeout = null;
+let isRecording = false;
+let recordBtn = null;
+
+// Record configs
+const RECORD_SECONDS = 10;
+const RECORD_FPS = 60;
+const RECORD_BITRATE = 8_000_000; // 8 Mbps (bạn có thể tăng/giảm)
+
 // Function for setting up 
 function setup() {
   canvasHolder = document.getElementById('canvas-holder');
@@ -193,13 +205,13 @@ function initUI_p5() {
     panel,
     'Columns',
     5,   // min
-    10,  // max
+    25,  // max
     params.columnCount,
     v => (params.columnCount = v)
   );
 
 
-  addSlider(panel, 'Gutter', 0, 12, params.gutter, 1, v => (params.gutter = v));
+//   addSlider(panel, 'Gutter', 0, 12, params.gutter, 1, v => (params.gutter = v));
   // addSlider(panel, 'Seam Alpha', 0, 0.35, params.seamAlpha, 0.01, v => (params.seamAlpha = v));
 
   addColor(panel, 'Color 1 (Top)', params.color1, v => (params.color1 = v));
@@ -218,6 +230,10 @@ function initUI_p5() {
   const btn = createButton('Save PNG');
   btn.parent(panel);
   btn.mousePressed(() => saveCanvas('columns-gradient', 'png'));
+
+  recordBtn = createButton(`Record ${RECORD_SECONDS}s Video`);
+  recordBtn.parent(panel);
+  recordBtn.mousePressed(() => startRecord10s());
 }
 
 // ----------------------------
@@ -252,4 +268,108 @@ function addColor(parent, labelText, initial, onInput) {
   cp.parent(parent);
   cp.input(() => onInput(cp.value()));
   return cp;
+}
+
+function pickMimeType() {
+  const candidates = [
+    'video/webm;codecs=vp9',
+    'video/webm;codecs=vp8',
+    'video/webm',
+  ];
+  for (const t of candidates) {
+    if (window.MediaRecorder && MediaRecorder.isTypeSupported(t)) return t;
+  }
+  return '';
+}
+
+function startRecord10s() {
+  console.log('Start record clicked');
+
+  if (!window.isSecureContext) {
+    alert('Record cần chạy trên HTTPS hoặc http://localhost (không chạy file://).');
+    console.warn('Not secure context:', location.href);
+    return;
+  }
+
+  if (!window.MediaRecorder) {
+    alert('Trình duyệt không hỗ trợ MediaRecorder. Thử Chrome/Edge mới nhất.');
+    return;
+  }
+
+  if (isRecording) return;
+
+  const canvasEl = document.querySelector('#canvas-holder canvas');
+  if (!canvasEl) {
+    alert('Không tìm thấy canvas trong #canvas-holder');
+    return;
+  }
+
+  // giảm fps cho ổn định
+  const stream = canvasEl.captureStream(30);
+  recordedChunks = [];
+
+  const mimeType = pickMimeType();
+  console.log('mimeType:', mimeType);
+
+  if (!mimeType) {
+    alert('Không tìm được mimeType WebM phù hợp cho MediaRecorder.');
+    return;
+  }
+
+  try {
+    recorder = new MediaRecorder(stream, {
+      mimeType,
+      videoBitsPerSecond: RECORD_BITRATE,
+    });
+  } catch (e) {
+    console.error('MediaRecorder init error:', e);
+    alert('Không khởi tạo được MediaRecorder. Xem console để biết lỗi.');
+    return;
+  }
+
+  recorder.onstart = () => console.log('Recorder started', recorder.state);
+
+  recorder.ondataavailable = (e) => {
+    console.log('dataavailable size=', e.data?.size);
+    if (e.data && e.data.size > 0) recordedChunks.push(e.data);
+  };
+
+  recorder.onerror = (e) => {
+    console.error('Recorder error:', e);
+    alert('Recorder gặp lỗi. Xem console.');
+  };
+
+  recorder.onstop = () => {
+    console.log('Recorder stopped. chunks=', recordedChunks.length);
+
+    isRecording = false;
+    if (recordBtn) recordBtn.removeAttribute('disabled');
+
+    if (!recordedChunks.length) {
+      alert('Không có dữ liệu video (chunks rỗng). Thử chạy trên localhost/https và Chrome/Edge.');
+      return;
+    }
+
+    const blob = new Blob(recordedChunks, { type: mimeType });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `columns-gradient-${RECORD_SECONDS}s.webm`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  };
+
+  isRecording = true;
+  if (recordBtn) recordBtn.setAttribute('disabled', 'true');
+
+  // timeslice: cứ 1s xuất 1 chunk => chắc chắn có data
+  recorder.start(1000);
+
+  recordTimeout = setTimeout(() => {
+    if (recorder && recorder.state === 'recording') recorder.stop();
+  }, RECORD_SECONDS * 1000);
 }
