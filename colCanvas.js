@@ -34,7 +34,13 @@ let recordBtn = null;
 // Record configs
 const RECORD_SECONDS = 10;
 const RECORD_FPS = 60;
-const RECORD_BITRATE = 8_000_000; // 8 Mbps (bạn có thể tăng/giảm)
+const RECORD_BITRATE = 8_000_000; // 8 Mbps (able to increase/ decrease)
+
+let useFixedTime = false;
+let fixedFrame = 0;
+
+const GIF_FPS = 20;     // 15–24 reasonable
+const LOOP_COUNT = 1;   // 1 cycle (can be 2,3)
 
 // Function for setting up 
 function setup() {
@@ -58,7 +64,10 @@ function draw() {
   const totalGutters = (n - 1) * params.gutter;
   const colW = (width - totalGutters) / n;
 
-  const t = millis() * 0.001 * params.speed;
+//   const t = millis() * 0.001 * params.speed;
+  const t = useFixedTime
+  ? (fixedFrame / GIF_FPS) * params.speed
+  : millis() * 0.001 * params.speed;
   const center = (n - 1) / 2;
 
   for (let i = 0; i < n; i++) {
