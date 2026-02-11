@@ -5,7 +5,7 @@ const params = {
 
   // Columns
   columnCount: 7,
-  gutter: 2,            // gap/seam between columns (px)
+  gutter: 0,            // gap/seam between columns (px)
   seamAlpha: 0.10,      // 0..1 subtle vertical seams
 
   // Colors (top -> bottom)
@@ -25,22 +25,17 @@ const params = {
 let canvasHolder = null;
 let outW = 720, outH = 720;
 
-let recorder = null;
-let recordedChunks = [];
-let recordTimeout = null;
-let isRecording = false;
-let recordBtn = null;
+// Gif configs
+let useFixedTime = false;
+let fixedFrame = 0;
+const GIF_FPS = 20;     // 15–24 reasonable
+const LOOP_COUNT = 1;   // 1 cycle (could be 2, 3)
+let gifBtn;
 
 // Record configs
 const RECORD_SECONDS = 10;
 const RECORD_FPS = 60;
 const RECORD_BITRATE = 8_000_000; // 8 Mbps (able to increase/ decrease)
-
-let useFixedTime = false;
-let fixedFrame = 0;
-
-const GIF_FPS = 20;     // 15–24 reasonable
-const LOOP_COUNT = 1;   // 1 cycle (can be 2,3)
 
 // Function for setting up 
 function setup() {
@@ -220,7 +215,7 @@ function initUI_p5() {
   );
 
 
-//   addSlider(panel, 'Gutter', 0, 12, params.gutter, 1, v => (params.gutter = v));
+  // addSlider(panel, 'Gutter', 0, 12, params.gutter, 1, v => (params.gutter = v));
   // addSlider(panel, 'Seam Alpha', 0, 0.35, params.seamAlpha, 0.01, v => (params.seamAlpha = v));
 
   addColor(panel, 'Color 1 (Top)', params.color1, v => (params.color1 = v));
@@ -240,9 +235,15 @@ function initUI_p5() {
   btn.parent(panel);
   btn.mousePressed(() => saveCanvas('columns-gradient', 'png'));
 
-  recordBtn = createButton(`Record ${RECORD_SECONDS}s Video`);
-  recordBtn.parent(panel);
-  recordBtn.mousePressed(() => startRecord10s());
+  // Gif file exporting button.
+  gifBtn = createButton('Export GIF');
+  gifBtn.parent(panel);
+  gifBtn.mousePressed(() => exportLoopGif(gifBtn));
+
+  // MP4 file exporting button.
+  const mp4Btn = createButton('Export MP4');
+  mp4Btn.parent(panel);
+  mp4Btn.mousePressed(() => exportMp4(mp4Btn));
 }
 
 // ----------------------------
@@ -278,107 +279,188 @@ function addColor(parent, labelText, initial, onInput) {
   cp.input(() => onInput(cp.value()));
   return cp;
 }
-
-function pickMimeType() {
-  const candidates = [
-    'video/webm;codecs=vp9',
-    'video/webm;codecs=vp8',
-    'video/webm',
-  ];
-  for (const t of candidates) {
-    if (window.MediaRecorder && MediaRecorder.isTypeSupported(t)) return t;
-  }
-  return '';
-}
-
-function startRecord10s() {
-  console.log('Start record clicked');
-
-  if (!window.isSecureContext) {
-    alert('Record cần chạy trên HTTPS hoặc http://localhost (không chạy file://).');
-    console.warn('Not secure context:', location.href);
-    return;
-  }
-
-  if (!window.MediaRecorder) {
-    alert('Trình duyệt không hỗ trợ MediaRecorder. Thử Chrome/Edge mới nhất.');
-    return;
-  }
-
-  if (isRecording) return;
-
+// Export gif file function
+async function exportLoopGif(btn) {
   const canvasEl = document.querySelector('#canvas-holder canvas');
-  if (!canvasEl) {
-    alert('Không tìm thấy canvas trong #canvas-holder');
+  if (!canvasEl) return alert('unfound canvas');
+
+  if (typeof GIF === 'undefined') {
+    alert('gif.js unable to load (check ./libs/gif.js)');
     return;
   }
 
-  // giảm fps cho ổn định
-  const stream = canvasEl.captureStream(30);
-  recordedChunks = [];
+  const periodSeconds = (2 * Math.PI) / params.speed;
+  const totalFrames = Math.round(periodSeconds * GIF_FPS * LOOP_COUNT);
+  const delay = 1000 / GIF_FPS;
 
-  const mimeType = pickMimeType();
-  console.log('mimeType:', mimeType);
+  // UI: lock button
+  const oldText = btn?.html?.() ?? 'Export 1 Loop GIF';
+  if (btn) { btn.attribute('disabled', 'true'); btn.html('Preparing frames...'); }
 
-  if (!mimeType) {
-    alert('Không tìm được mimeType WebM phù hợp cho MediaRecorder.');
-    return;
-  }
+  const gif = new GIF({
+    workers: 2,
+    quality: 10,
+    width: canvasEl.width,
+    height: canvasEl.height,
+    workerScript: './libs/gif.worker.js',
+  });
 
+  // progress UI
+  gif.on('progress', (p) => {
+    const pct = Math.round(p * 100);
+    if (btn) btn.html(`Exporting... ${pct}%`);
+  });
+
+  // render frames deterministically
+  noLoop();
+  useFixedTime = true;
   try {
-    recorder = new MediaRecorder(stream, {
-      mimeType,
-      videoBitsPerSecond: RECORD_BITRATE,
-    });
-  } catch (e) {
-    console.error('MediaRecorder init error:', e);
-    alert('Không khởi tạo được MediaRecorder. Xem console để biết lỗi.');
-    return;
+    for (let k = 0; k < totalFrames; k++) {
+      fixedFrame = k;
+      redraw();
+      gif.addFrame(canvasEl, { copy: true, delay });
+    }
+  } finally {
+    useFixedTime = false;
+    loop();
   }
 
-  recorder.onstart = () => console.log('Recorder started', recorder.state);
-
-  recorder.ondataavailable = (e) => {
-    console.log('dataavailable size=', e.data?.size);
-    if (e.data && e.data.size > 0) recordedChunks.push(e.data);
-  };
-
-  recorder.onerror = (e) => {
-    console.error('Recorder error:', e);
-    alert('Recorder gặp lỗi. Xem console.');
-  };
-
-  recorder.onstop = () => {
-    console.log('Recorder stopped. chunks=', recordedChunks.length);
-
-    isRecording = false;
-    if (recordBtn) recordBtn.removeAttribute('disabled');
-
-    if (!recordedChunks.length) {
-      alert('Không có dữ liệu video (chunks rỗng). Thử chạy trên localhost/https và Chrome/Edge.');
-      return;
-    }
-
-    const blob = new Blob(recordedChunks, { type: mimeType });
+  gif.on('finished', (blob) => {
+    // download
     const url = URL.createObjectURL(blob);
-
     const a = document.createElement('a');
     a.href = url;
-    a.download = `columns-gradient-${RECORD_SECONDS}s.webm`;
+    a.download = 'columns-canvas.gif';
     document.body.appendChild(a);
     a.click();
     a.remove();
-
     setTimeout(() => URL.revokeObjectURL(url), 2000);
-  };
 
-  isRecording = true;
-  if (recordBtn) recordBtn.setAttribute('disabled', 'true');
+    // UI: unlock
+    if (btn) { btn.removeAttribute('disabled'); btn.html(oldText); }
+  });
 
-  // timeslice: cứ 1s xuất 1 chunk => chắc chắn có data
-  recorder.start(1000);
-
-  recordTimeout = setTimeout(() => {
-    if (recorder && recorder.state === 'recording') recorder.stop();
-  }, RECORD_SECONDS * 1000);
+  gif.render();
 }
+
+let ffmpegInstance = null;
+
+async function getFFmpeg() {
+  if (!window.FFmpeg) throw new Error('FFmpeg global not found. Check script include.');
+
+  if (!ffmpegInstance) {
+    const { createFFmpeg, fetchFile } = window.FFmpeg;
+
+    ffmpegInstance = createFFmpeg({
+      log: false,
+      corePath: 'https://unpkg.com/@ffmpeg/core@0.10.0/dist/ffmpeg-core.js',
+    });
+
+    await ffmpegInstance.load();
+
+    // attach fetchFile to reuse below.
+    ffmpegInstance._fetchFile = fetchFile;
+  }
+
+  return ffmpegInstance;
+}
+
+// Export mp4 file function
+async function exportMp4(btn) {
+  const canvasEl = document.querySelector('#canvas-holder canvas');
+  if (!canvasEl) return alert('unfound canvas');
+
+  const FPS = 30;
+  const totalFrames = FPS * SECONDS;
+
+  // UI lock
+  const oldText = btn?.html?.() ?? 'Export MP4';
+  if (btn) { btn.attribute('disabled', 'true'); btn.html('Preparing frames...'); }
+
+  // canvas phụ để chụp frame
+  const tmp = document.createElement('canvas');
+  tmp.width = canvasEl.width;
+  tmp.height = canvasEl.height;
+  const tmpCtx = tmp.getContext('2d');
+
+  // Store blobs PNG (150 frames @ 5s/30fps)
+  const pngBlobs = [];
+
+  // Render frames deterministic
+  noLoop();
+  useFixedTime = true;
+  FIXED_FPS = FPS;
+
+  try {
+    for (let k = 0; k < totalFrames; k++) {
+      fixedFrame = k;
+      redraw();
+
+      tmpCtx.clearRect(0, 0, tmp.width, tmp.height);
+      tmpCtx.drawImage(canvasEl, 0, 0);
+
+      const blob = await new Promise((resolve) => tmp.toBlob(resolve, 'image/png'));
+      pngBlobs.push(blob);
+
+      if (btn && k % 10 === 0) {
+        const pct = Math.round((k / totalFrames) * 100);
+        btn.html(`Preparing frames... ${pct}%`);
+      }
+    }
+  } finally {
+    useFixedTime = false;
+    FIXED_FPS = GIF_FPS;
+    loop();
+  }
+  try{
+    // Encode using ffmpeg.wasm
+    const ffmpeg = await getFFmpeg();
+    const fetchFile = ffmpeg._fetchFile;
+
+    // write frames
+    for (let i = 0; i < pngBlobs.length; i++) {
+      const name = `frame_${String(i).padStart(4, '0')}.png`;
+      ffmpeg.FS('writeFile', name, await fetchFile(pngBlobs[i]));
+    }
+
+    // encode mp4
+    await ffmpeg.run(
+      '-framerate', String(FPS),
+      '-i', 'frame_%04d.png',
+      '-c:v', 'libx264',
+      '-pix_fmt', 'yuv420p',
+      '-movflags', 'faststart',
+      'out.mp4'
+    );
+
+    const data = ffmpeg.FS('readFile', 'out.mp4');
+    const mp4Blob = new Blob([data.buffer], { type: 'video/mp4' });
+    const url = URL.createObjectURL(mp4Blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `columns-${SECONDS}s.mp4`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+
+    if (btn) { btn.removeAttribute('disabled'); btn.html(oldText); }
+  } catch (e) {
+    console.error(e);
+    alert('Encode MP4 thất bại. Xem console.');
+    if (btn) { btn.removeAttribute('disabled'); btn.html(oldText); }
+  } finally {
+    // cleanup ffmpeg FS
+    try {
+      for (let i = 0; i < pngBlobs.length; i++) {
+        const name = `frame_${String(i).padStart(4, '0')}.png`;
+        ffmpeg.FS('unlink', name);
+      }
+      ffmpeg.FS('unlink', 'out.mp4');
+    } catch {}
+  }
+}
+
+
+
+
